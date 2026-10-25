@@ -1,0 +1,11 @@
+diff --git a/verl/trainer/main_ppo.py b/verl/trainer/main_ppo.py
+--- a/verl/trainer/main_ppo.py
++++ b/verl/trainer/main_ppo.py
+@@ -23,6 +23,6 @@ import hydra
+ import ray
+ from omegaconf import OmegaConf
+ 
+-from verl.trainer.ppo.ray_trainer import RayPPOTrainer
++from grpo_eval import WebShopTrainer as RayPPOTrainer
+ from verl.trainer.ppo.reward import load_reward_manager
+ from verl.trainer.constants_ppo import get_ppo_ray_runtime_env

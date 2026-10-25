@@ -1,0 +1,49 @@
+name: Clean-checkout WebShop CPU checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  reproduction:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - name: Prepare CPU-only test dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install torch==2.8.0 torchvision==0.23.0 --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r configs/requirements-cpu.txt
+      - run: python src/setup.py --framework
+      - run: python src/setup.py --verify
+      - run: python scripts/check_release.py
+      - run: python -m pytest tests -q
+      - name: Actual native WebShop data, Lucene search, purchase and reward
+        env:
+          OPENBLAS_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          OMP_NUM_THREADS: '1'
+          _JAVA_OPTIONS: '-XX:+UseSerialGC -Xss512k -Xmx1g'
+        run: |
+          python src/assets.py --download --nlp --index --verify
+          python src/env_smoke.py
+      - name: Entry and shell checks (no GPU)
+        run: |
+          bash -n scripts/train.sh scripts/eval.sh scripts/run_both.sh
+          bash scripts/train.sh --dry-run > /tmp/webshop-train-config.yaml
+          bash scripts/eval.sh --model ./unused-model --dry-run > /tmp/webshop-eval-config.yaml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-environment-smoke
+          path: results/environment_smoke.json
+          if-no-files-found: ignore
