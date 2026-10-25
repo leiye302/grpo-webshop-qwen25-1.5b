@@ -126,6 +126,7 @@ def launch(args):
         'recipe_sha256': sha(ROOT / 'configs/experiment.json'),
         'upstream_lock_sha256': sha(ROOT / 'configs/upstream.json'),
         'asset_lock_sha256': sha(ROOT / 'configs/assets.json'),
+        'validation_manifest_sha256': sha(ROOT / 'configs/fixed_validation128.json'),
         'asset_receipt': asset_receipt, 'world_size': WORLD_SIZE, 'command': args.command,
         'release_code_sha256': {p.name: sha(p) for p in sorted((ROOT / 'src').glob('*.py'))}}
     if args.resume:

@@ -254,8 +254,11 @@ def test_readonly_validation_hook_matches_native_metrics_and_restores(tmp_path, 
                 raise RuntimeError('native failure')
             return metrics
     module = evaluation_module(monkeypatch, Native)
-    env = SimpleNamespace(_rng=np.random.RandomState(1000), goal_idxs=range(500), env_num=128, group_n=1)
-    original_reset = lambda: env._rng.choice(env.goal_idxs,128,replace=False)
+    env = SimpleNamespace(_rng=np.random.RandomState(1000), goal_idxs=range(500),
+                          env_num=128, group_n=1, is_train=False)
+    def original_reset():
+        indices = env._rng.choice(env.goal_idxs, 128, replace=False)
+        return [f'goal-{i}' for i in indices], [{} for _ in indices]
     original_loop = lambda: batch
     env.reset = original_reset
     trainer = module.WebShopTrainer()
@@ -277,6 +280,87 @@ def test_readonly_validation_hook_matches_native_metrics_and_restores(tmp_path, 
         assert len(out['native_worker_goal_indices']) == 128
     assert env.reset is original_reset
     assert trainer.traj_collector.multi_turn_loop is original_loop
+    if not failure:
+        trainer.global_steps = 10
+        trainer._validate()
+        later = json.loads((tmp_path/'run/evaluation/update_010/summary.json').read_text())
+        assert later['fixed_validation_identity'] == out['fixed_validation_identity']
+
+
+def test_fixed_validation_matches_first_native_draw_across_checkpoints_and_resume():
+    from fixed_validation import reset_fixed_validation, manifest
+    selected = []
+    env = SimpleNamespace(_rng=np.random.RandomState(1000), goal_idxs=range(500),
+                          env_num=128, group_n=1, is_train=False)
+    def reset():
+        indices = env._rng.choice(env.goal_idxs, 128, replace=False).tolist()
+        selected.append(indices)
+        return [f'task-{i}' for i in indices], [{} for _ in indices]
+    identities = []
+    for _ in range(3):
+        env._rng.choice(500, 128, replace=False)  # A progressed/private native RNG is irrelevant.
+        before = copy.deepcopy(env._rng.get_state())
+        _, identity = reset_fixed_validation(env, reset, 1000)
+        identities.append(identity)
+        after = env._rng.get_state()
+        assert before[0] == after[0] and np.array_equal(before[1], after[1])
+        assert before[2:] == after[2:]
+    expected = [r['goal_index'] for r in manifest()['selection']]
+    assert selected == [expected]*3 and identities == [identities[0]]*3
+    env._rng = np.random.RandomState(1000)  # Recreated environment on resume.
+    _, restarted = reset_fixed_validation(env, reset, 1000)
+    assert restarted == identities[0]
+    env.is_train = True
+    with pytest.raises(RuntimeError, match='validation environment'):
+        reset_fixed_validation(env, reset, 1000)
+
+
+def test_actual_native_vector_reset_frozen_without_changing_training_sampler():
+    from fixed_validation import reset_fixed_validation, manifest
+    source = UPSTREAM/'agent_system/environments/env_package/webshop/envs.py'
+    tree = ast.parse(source.read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'WebshopMultiProcessEnv')
+    class Worker:
+        def __init__(self, seed, kwargs): self.seed = seed
+        def get_goals(self): return list(range(1000))
+        def reset(self, index): return f'{self.seed}:{index}', {}
+        def close(self): pass
+    class Handle:
+        def __init__(self, obj): self.obj = obj
+        def __getattr__(self, name): return SimpleNamespace(remote=getattr(self.obj, name))
+    remote = SimpleNamespace(remote=lambda *a:Handle(Worker(*a)))
+    ray = SimpleNamespace(is_initialized=lambda:True, remote=lambda **kw:lambda c:remote,
+                          get=lambda x:x, kill=lambda x:None)
+    namespace = {'gym':SimpleNamespace(Env=object), 'np':np, 'ray':ray, 'WebshopWorker':Worker}
+    exec(compile(ast.Module(body=[cls],type_ignores=[]),str(source),'exec'),namespace)
+    Native = namespace['WebshopMultiProcessEnv']
+    training = Native(0,16,8,{},is_train=True)
+    validation = Native(1000,128,1,{},is_train=False)
+    try:
+        first_train = training.reset()
+        val1, identity1 = reset_fixed_validation(validation, validation.reset, 1000)
+        val2, identity2 = reset_fixed_validation(validation, validation.reset, 1000)
+        assert val1 == val2 and identity1 == identity2
+        assert val1[0] == [f"{r['worker_seed']}:{r['goal_index']}" for r in manifest()['selection']]
+        second_train = training.reset()
+        control = np.random.RandomState(0)
+        first = np.repeat(control.choice(range(500,1000),16,replace=False),8)
+        second = np.repeat(control.choice(range(500,1000),16,replace=False),8)
+        assert first_train[0] == [f'{i//8}:{x}' for i,x in enumerate(first)]
+        assert second_train[0] == [f'{i//8}:{x}' for i,x in enumerate(second)]
+        assert first_train != second_train
+    finally:
+        training.close()
+        validation.close()
+
+
+def test_changed_initial_goal_is_rejected_not_silently_compared(tmp_path):
+    from fixed_validation import record_identity
+    identity = {'manifest_sha256':'same', 'initial_observations_sha256':'original'}
+    record_identity(tmp_path, identity)
+    record_identity(tmp_path, identity)
+    with pytest.raises(RuntimeError, match='initial tasks changed'):
+        record_identity(tmp_path, dict(identity, initial_observations_sha256='different'))
 
 
 @pytest.mark.parametrize('raw,done,expected', [(1.,True,10.),(.8,True,0.),(1.,False,0.),(0.,False,0.)])

@@ -12,16 +12,26 @@ def main():
     parser.add_argument('--out', type=Path, default=ROOT / 'results')
     args = parser.parse_args()
     rows = []
+    task_identities = set()
     for size in ('1.5b', '3b'):
         run = args.runs / ('grpo_' + size)
         for path in sorted((run / 'evaluation').glob('update_*/summary.json')):
             item = json.loads(path.read_text())
+            identity = item.get('fixed_validation_identity')
+            if not identity:
+                raise RuntimeError('Random/legacy validation results cannot enter the fixed-task report')
+            task_identities.add((identity['manifest_sha256'], identity['selection_sha256'],
+                                 identity['initial_observations_sha256']))
             rows.append({'model': size, **{k: item[k] for k in (
                 'update', 'successes', 'episodes', 'success_rate', 'task_score',
                 'task_score_0_to_100', 'selection_sha256', 'reasoning_open_rate',
-                'strict_protocol_rate', 'native_action_valid_rate')}})
+                'strict_protocol_rate', 'native_action_valid_rate')},
+                'validation_manifest_sha256': identity['manifest_sha256'],
+                'initial_observations_sha256': identity['initial_observations_sha256']})
     if not rows:
         raise RuntimeError('No real validation results exist yet')
+    if len(task_identities) != 1:
+        raise RuntimeError('Validation task identities differ; refusing an incomparable combined curve')
     args.out.mkdir(parents=True, exist_ok=True)
     with (args.out / 'webshop.csv').open('w', newline='', encoding='utf-8') as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))

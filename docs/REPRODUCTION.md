@@ -32,7 +32,7 @@ No reasoning-specific loss/mask is introduced.
 - env.rollout.n=8; model rollout.n=1. Native decision-row grouping and
   batch adjustment retained. Four FSDP ranks, two TP2 replicas, vLLM memory.6,
   chunkedprefill=false, eager=false, freecache=false.
-- Initial validation and every5 updates, original128-episode sampler.
+- Initial validation and every5 updates, the same fixed128 task bindings.
 - Save20/final150, newest2 verified complete checkpoints; final HF export.
 
 The original launcher requests8 GPUs; our four-GPU hardware binding changes
@@ -45,9 +45,9 @@ the official script's model family and size.
 
 Only one native tracked source line changes: main_ppo imports our small
 WebShopTrainer alias. That subclass calls super().fit and super()._validate.
-It adds read-only local JSON/token/protocol telemetry and wraps only native
-checkpoint save/load storage with atomic publication and post-save pruning.
-No training loss, sampling, optimizer, rollout, environment manager, parser,
+It adds local JSON/token/protocol telemetry, evaluation-only fixed task
+selection, and transactional storage around native checkpoint save/load.
+No training loss, training sampling, optimizer, rollout, environment manager, parser,
 reward, prompt, memory, goal generator or Lucene search is patched. Public
 source hashes and the tiny complete patch are enforced before launch.
 
@@ -86,10 +86,40 @@ RandomState and repeats by group_n.
 Goals are shuffled independently inside workers. Numeric train/val index
 separation is not proof of globally disjoint semantic goals, nor the standard
 human500 split. Retain this native limitation and describe the dataset truthfully.
-The telemetry previews the selection using a copied RNG state; it never consumes
-or changes the native RNG. Continuous matched runs use identical index schedules.
-Environment RNG/session state is not part of native checkpoints, so resume may
-restart that schedule and is not an exact uninterrupted replay.
+### Fixed validation adaptation
+
+The original persistent private RandomState advances on every validation reset,
+so a fixed initialization seed alone does not freeze tasks. This release instead
+publishes configs/fixed_validation128.json: the exact original first128 draw from
+seed1000, paired with worker IDs and native worker seeds1000..1127. Every checkpoint
+and both model sizes use the same byte-identical manifest. During validation reset
+only, save the private RNG state, reproduce the original first draw, assert exact
+manifest agreement, invoke the unchanged native reset, and restore private RNG
+state even on failure. Training RNG/sampling and global model RNG are not changed.
+
+For all validation updates the task set is constant:
+
+\[
+\mathcal{V}_t=\mathcal{V}_0,\qquad t\in\{0,5,10,\ldots,150\}.
+\]
+
+After the first actual reset, persist manifest/selection/initial-observation SHA
+in fixed_validation_identity.json. Every subsequent validation, including resume,
+must match the same initial observations, or fail before policy generation.
+The summary carries this identity so two sizes can verify task equality. Source,
+assets and package locks also constrain per-worker shuffled goals and prices.
+Fixed bindings may contain semantically repeated goals across workers; the native
+goal generator and split are not rewritten to claim a canonical held-out benchmark.
+
+Validation remains one complete policy rollout/task, temperature.4 with sampling,
+15 steps/history2/response512, reporting native success and continuous task score.
+Fixed tasks do not make generation deterministic; no claim of identical scores
+across repeated evaluations. Evaluation tasks are never fed to an optimizer.
+
+Native checkpoints do not snapshot WebShop environment/session RNG state. Fixed
+validation identities survive resume, but training remains stochastic and is not
+an exact uninterrupted replay. Older random-validation run bindings are deliberately
+incompatible; preserve their code/output and use a new run directory for this recipe.
 
 WebshopWorker gives sparse reward10 iff terminal raw score==1.0, otherwise0.
 The continuous raw task_score is separately reported. Native manager supplies

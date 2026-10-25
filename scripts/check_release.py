@@ -8,10 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = {
     '.env.example', '.gitattributes', '.github/workflows/check.yml', '.gitignore',
     'LICENSE', 'README.md', 'THIRD_PARTY.md', 'docs/REPRODUCTION.md',
-    'configs/experiment.json', 'configs/models.json', 'configs/requirements.txt',
+    'configs/experiment.json', 'configs/models.json', 'configs/requirements.txt', 'configs/fixed_validation128.json',
     'configs/assets.json', 'configs/requirements-cpu.txt', 'configs/upstream.json', 'patches/runtime.patch',
     'scripts/check_release.py', 'scripts/eval.sh', 'scripts/run_both.sh', 'scripts/train.sh',
-    'src/common.py', 'src/checkpoint_io.py', 'src/assets.py', 'src/env_smoke.py', 'src/report.py', 'src/run.py',
+    'src/common.py', 'src/checkpoint_io.py', 'src/assets.py', 'src/env_smoke.py', 'src/report.py', 'src/run.py', 'src/fixed_validation.py',
     'src/grpo_eval.py', 'src/setup.py', 'tests/test_contract.py', 'tests/test_checkpoint_io.py',
 }
 PRIVATE = [

@@ -6,6 +6,7 @@ import sys
 from common import ROOT, UPSTREAM, WEBSHOP, atomic_json
 from assets import verify
 from setup import verify as verify_source
+from fixed_validation import manifest, digest
 
 
 def main():
@@ -18,12 +19,14 @@ def main():
     sys.path[:0] = [str(UPSTREAM), str(WEBSHOP)]
     from agent_system.environments.env_package.webshop.envs import WebshopWorker
     records = []
-    for seed in (0, 1000):
+    fixed = manifest()['selection']
+    cases = [(0, 0)] + [(r['worker_seed'], r['goal_index']) for r in (fixed[0], fixed[-1])]
+    for seed, goal_index in cases:
         worker = WebshopWorker(seed, {'observation_mode': 'text', 'num_products': None, 'human_goals': False,
             'file_path': str(WEBSHOP / 'data/items_shuffle_1000.json'),
             'attr_path': str(WEBSHOP / 'data/items_ins_v2_1000.json')})
         try:
-            worker.reset(0)
+            initial, _ = worker.reset(goal_index)
             env = worker.env.unwrapped
             goal = env.server.user_sessions[env.session]['goal']
             product = env.server.product_item_dict[goal['asin']]
@@ -46,7 +49,11 @@ def main():
             _, reward, done, info = worker.step(actions[-1])
             if not done or reward != 10.0 or not info['won'] or info['task_score'] != 1.0:
                 raise RuntimeError('Native exact-goal purchase did not yield the original sparse success reward')
-            records.append({'seed': seed, 'goal_index': 0, 'goal_count': len(env.server.goals),
+            repeated, _ = worker.reset(goal_index)
+            if repeated != initial:
+                raise RuntimeError('Native fixed-goal reset changed the initial task after purchase')
+            records.append({'seed': seed, 'goal_index': goal_index, 'goal_count': len(env.server.goals),
+                            'repeat_reset_identical': True, 'initial_observation_sha256': digest(initial),
                             'actions': actions, 'native_reward': reward, 'task_score': info['task_score']})
         finally:
             worker.close()

@@ -7,7 +7,9 @@
   Upstream notices remain in the downloaded checkout.
   Only the Trainer import alias in `verl/trainer/main_ppo.py` is patched.
   The subclass calls the unchanged training/validation loop, adding read-only
-  telemetry and transactional storage around native serialization/loading.
+  telemetry, evaluation-only fixed128 task selection, and transactional
+  storage around native serialization/loading. The fixed manifest is the
+  original seed1000 first draw and is reused across checkpoints/model sizes.
   No native WebShop environment, parser, prompt, search or reward changes.
 - **WebShop**: https://github.com/princeton-nlp/WebShop .
   The embedded source retains its MIT license at

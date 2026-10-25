@@ -1,21 +1,12 @@
 """Read-only native WebShop telemetry plus the shared safe checkpoint wrapper."""
-import hashlib
 import json
 import os
 from pathlib import Path
-import numpy as np
 from common import atomic_json, protocol
 from checkpoint_io import NativeCheckpointMixin
+from fixed_validation import (manifest, native_validation_selection,
+                              reset_fixed_validation, record_identity)
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer
-
-
-def native_validation_selection(env, base_seed):
-    """Preview native RandomState.choice without advancing its actual state."""
-    preview = np.random.RandomState()
-    preview.set_state(env._rng.get_state())
-    indices = np.repeat(preview.choice(env.goal_idxs, size=env.env_num, replace=False), env.group_n).tolist()
-    return [{'worker': i, 'worker_seed': base_seed + i // env.group_n, 'goal_index': int(index)}
-            for i, index in enumerate(indices)]
 
 
 class WebShopTrainer(NativeCheckpointMixin, RayPPOTrainer):
@@ -41,11 +32,14 @@ class WebShopTrainer(NativeCheckpointMixin, RayPPOTrainer):
         original_loop = self.traj_collector.multi_turn_loop
         native_env = self.val_envs.envs
         original_reset = native_env.reset
-        records, selections = [], []
+        records, selections, identities = [], [], []
 
         def reset():
-            selections.append(native_validation_selection(native_env, self.config.env.seed + 1000))
-            return original_reset()
+            result, identity = reset_fixed_validation(native_env, original_reset, self.config.env.seed + 1000)
+            record_identity(os.environ['GRPO_RUN_DIR'], identity)
+            selections.append(manifest()['selection'])
+            identities.append(identity)
+            return result
 
         def capture(*args, **kwargs):
             batch = original_loop(*args, **kwargs)
@@ -80,12 +74,13 @@ class WebShopTrainer(NativeCheckpointMixin, RayPPOTrainer):
         if abs(metrics['val/success_rate'] - successes / expected) > 1e-6:
             raise RuntimeError('Episode success differs from native WebShop metric')
         schedule = selections[0]
-        schedule_sha = hashlib.sha256(json.dumps(schedule, sort_keys=True).encode()).hexdigest()
+        identity = identities[0]
         score_key = 'val/webshop_task_score (not success_rate)'
         summary = {'update': int(self.global_steps), 'episodes': expected,
             'successes': successes, 'success_rate': successes / expected,
             'task_score': float(metrics[score_key]), 'task_score_0_to_100': 100 * float(metrics[score_key]),
-            'selection_sha256': schedule_sha, 'native_worker_goal_indices': schedule,
+            'selection_sha256': identity['selection_sha256'],
+            'fixed_validation_identity': identity, 'native_worker_goal_indices': schedule,
             'decisions': len(records), 'native_metrics': metrics,
             'reasoning_open_rate': sum(r['protocol']['reasoning_open'] for r in records) / len(records),
             'strict_protocol_rate': sum(r['protocol']['strict_protocol'] for r in records) / len(records),

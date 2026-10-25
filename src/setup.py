@@ -23,6 +23,8 @@ def verify():
         raise RuntimeError('Runtime patch differs')
     if sha(ROOT / 'configs/assets.json') != lock['assets_lock_sha256']:
         raise RuntimeError('Public WebShop asset lock differs')
+    if sha(ROOT / 'configs/fixed_validation128.json') != lock['validation_manifest_sha256']:
+        raise RuntimeError('Fixed WebShop validation manifest differs')
     git(UPSTREAM, 'apply', '--reverse', '--check', str(ROOT / 'patches/runtime.patch'))
     for group in ('unchanged_files', 'patched_files'):
         for name, expected in lock[group].items():

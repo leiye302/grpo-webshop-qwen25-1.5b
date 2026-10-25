@@ -2,6 +2,7 @@
   "repository": "https://github.com/ZJU-REAL/SDAR.git",
   "commit": "29dcb12a55d8fc17ba6ae03fd0a69048f43051f3",
   "native_launcher": "examples/grpo_trainer/run_webshop_8gpu.sh",
+  "validation_manifest_sha256": "da8c9f4a6ded41ba72aa3ea288e8f3620fca28bc01f8c0dc8598de4f6738c53e",
   "patch_sha256": "85ffd8fd2d35558aab72705d14fc739058c166a560e5ad79d4107495d373d8d4",
   "assets_lock_sha256": "f8313d36b83df707e2f44b85fd2a07aa765ad82e3ee9cc9f26620e92e34cc81a",
   "unchanged_files": {
