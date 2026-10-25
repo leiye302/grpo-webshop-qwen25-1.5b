@@ -24,7 +24,7 @@ No reasoning-specific loss/mask is introduced.
 - Two original Qwen2.5 Instruct sizes have fixed public revisions in models.json.
 - 150 updates, each globally16 groups×8 episodes=128; dummy train parquet16
   rows supplies one dataloader batch per epoch, so150 epochs=150 updates.
-  Dummy val parquet128 declares modality/count only. Tasks come from live env.
+  Dummy val parquet140 declares modality/count only. Tasks come from live env.
 - LR1e-6, global decision-row mini64, per-GPU micro8, one PPO epoch,
   low_var_kl reference coefficient.01, entropy.001, invalid-action penalty.1.
 - Prompt4096, response512, history2, max15 environment steps.
@@ -32,7 +32,7 @@ No reasoning-specific loss/mask is introduced.
 - env.rollout.n=8; model rollout.n=1. Native decision-row grouping and
   batch adjustment retained. Four FSDP ranks, two TP2 replicas, vLLM memory.6,
   chunkedprefill=false, eager=false, freecache=false.
-- Initial validation and every5 updates, the same fixed128 task bindings.
+- Initial validation and every5 updates, all of the same fixed140 disjoint tasks.
 - Save20/final150, newest2 verified complete checkpoints; final HF export.
 
 The original launcher requests8 GPUs; our four-GPU hardware binding changes
@@ -43,13 +43,17 @@ the official script's model family and size.
 
 ## Minimal explicit adaptations
 
-Only one native tracked source line changes: main_ppo imports our small
-WebShopTrainer alias. That subclass calls super().fit and super()._validate.
-It adds local JSON/token/protocol telemetry, evaluation-only fixed task
-selection, and transactional storage around native checkpoint save/load.
-No training loss, training sampling, optimizer, rollout, environment manager, parser,
-reward, prompt, memory, goal generator or Lucene search is patched. Public
-source hashes and the tiny complete patch are enforced before launch.
+Two native source files are patched. main_ppo imports our WebShopTrainer
+alias, which calls super().fit and super()._validate for JSON/token telemetry,
+fixed validation reset and transactional checkpoint storage. The WebShop
+vector factory instantiates a small subclass that filters each worker's
+actual goal catalog by shared content IDs before Actor interaction; its index
+range then spans that already filtered catalog. This is necessary because
+different workers independently shuffle their catalogs.
+No training loss, optimizer, rollout, environment manager, parser, reward,
+prompt, memory, goal generator or Lucene search is changed. Native training
+group sampling remains uniform without replacement, on the new disjoint
+training pool. Both changed files and all locked unchanged files are verified.
 
 Other portable changes: public pinned model/assets download, index build,
 Python3.10/Java11 and compatible package constraints, project-relative paths,
@@ -76,26 +80,44 @@ documents SHA and versions across models, not only index binary identity.
 The accepted on-disk index must match its own receipt when resuming.
 
 Each Ray worker owns its environment, RNG, shuffled goals, prices and searcher.
-Training has128 actors and validation128 actors; do not pool them into a single
+Training has128 actors and validation140 actors; do not pool them into a single
 process because Python/NumPy/torch RNGs and goal shuffling are process-local.
 Worker seed=base_seed+worker_index//group_n; val base_seed=train_seed+1000.
-Native goal_idxs=train range(500,len(goals)), val range(500).
-reset samples without replacement using each vector environment's persistent
-RandomState and repeats by group_n.
+The original implementation uses train indices500..N-1 and validation0..499;
+indices from different shuffled catalogs do not guarantee disjoint actual
+tasks. This release instead filters actual goals first, then uses local
+indices0..len(filtered_pool)-1. Training samples without replacement with
+the original persistent RandomState and repeats by group_n.
 
-Goals are shuffled independently inside workers. Numeric train/val index
-separation is not proof of globally disjoint semantic goals, nor the standard
-human500 split. Retain this native limitation and describe the dataset truthfully.
-### Fixed validation adaptation
+### Fixed140 content-based split
 
-The original persistent private RandomState advances on every validation reset,
-so a fixed initialization seed alone does not freeze tasks. This release instead
-publishes configs/fixed_validation128.json: the exact original first128 draw from
-seed1000, paired with worker IDs and native worker seeds1000..1127. Every checkpoint
-and both model sizes use the same byte-identical manifest. During validation reset
-only, save the private RNG state, reproduce the original first draw, assert exact
-manifest agreement, invoke the unchanged native reset, and restore private RNG
-state even on failure. Training RNG/sampling and global model RNG are not changed.
+configs/task_split.json fixes140 unique visible objectives:28 each from the
+native beauty/electronics/fashion/garden/grocery categories, with140 different
+target ASINs,123 query types and126 product-category paths. Selection balances
+attribute/option counts, then query/path diversity, using a fixed2026 SHA tie
+break. It does not use model output, rewards or success rates. Rebuild it with
+select_validation/make_manifest in src/task_split.py on the unmodified native
+seed1000 catalog; env_smoke.py verifies equivalent manifest content.
+
+A content ID hashes normalized instruction, attributes and options, ignoring
+only the generated price suffix and target ASIN aliases. Native workers generate
+different price thresholds, so these variants must not bypass the exclusion.
+Of6910 native entries,145 map to the140 held-out IDs;6765 remain for training.
+Training entries are otherwise kept, including their original duplicates,
+order and goal weights. This is objective-held-out, not product-held-out:
+other requirements for the same products may still be used in training.
+
+Every worker filters its actual server.goals before any Actor observation,
+rebuilds native goal weights, discards the unfiltered constructor session,
+and checks allowed IDs on reset/step, including native terminal auto-resets.
+The raw catalog count and content-set hash must match the public lock.
+
+configs/fixed_validation140.json binds all140 held-out IDs to worker seeds
+1000..1139 and goal indices0..139. Every evaluation runs one native140-episode
+batch, exactly once per task. A temporary validation-only deterministic chooser
+uses that order, then restores the original private RNG object even on failure.
+Actual reset task IDs must match before generation. The global training/model
+RNG and original training sampler are not replaced.
 
 For all validation updates the task set is constant:
 
@@ -107,9 +129,15 @@ After the first actual reset, persist manifest/selection/initial-observation SHA
 in fixed_validation_identity.json. Every subsequent validation, including resume,
 must match the same initial observations, or fail before policy generation.
 The summary carries this identity so two sizes can verify task equality. Source,
-assets and package locks also constrain per-worker shuffled goals and prices.
-Fixed bindings may contain semantically repeated goals across workers; the native
-goal generator and split are not rewritten to claim a canonical held-out benchmark.
+assets and package locks also constrain per-worker goals and prices. Each task
+has a distinct content ID, and the pool invariant is
+
+\[
+|\mathcal V|=140,\qquad \mathcal T\cap\mathcal V=\varnothing.
+\]
+
+This is a custom fixed synthetic split, not WebShop's canonical human500,
+unseen-product or strict cross-domain zero-shot benchmark.
 
 Validation remains one complete policy rollout/task, temperature.4 with sampling,
 15 steps/history2/response512, reporting native success and continuous task score.
@@ -118,7 +146,7 @@ across repeated evaluations. Evaluation tasks are never fed to an optimizer.
 
 Native checkpoints do not snapshot WebShop environment/session RNG state. Fixed
 validation identities survive resume, but training remains stochastic and is not
-an exact uninterrupted replay. Older random-validation run bindings are deliberately
+an exact uninterrupted replay. Older random/128-validation run bindings are deliberately
 incompatible; preserve their code/output and use a new run directory for this recipe.
 
 WebshopWorker gives sparse reward10 iff terminal raw score==1.0, otherwise0.

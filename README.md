@@ -14,16 +14,16 @@
 | PPO | 全局决策行 mini-batch64；micro8/GPU；原生GRPO/clip/token-mean |
 | 正则 | 原生reference KL=.01 low_var_kl；entropy=.001；非法动作惩罚=.1 |
 | 交互 | max15步；history2；prompt4096；response512；训练temperature1 |
-| 验证 | 初始及每5步；固定同一组128任务；temperature=.4，do_sample=true |
+| 验证 | 初始及每5步；固定140个实际任务，五类各28个；temperature=.4，do_sample=true |
 | 保存 | 每20步及最终150；完整保存、SHA校验后才轮换，保留最近两份 |
 
-**环境保留 SDAR 默认：1000商品的小环境、synthetic goals。** 不是全量商品环境，也不是 canonical human500 测试集。原版每次验证重新抽128个索引；本仓库将原版第一次验证的128个环境任务绑定写成 [固定清单](configs/fixed_validation128.json)，此后所有checkpoint、两个模型尺寸、重启续跑和独立评测都使用同一组。仅改变验证选题，不改变训练采样、loss、prompt、动作解析或奖励。详细边界见 [复现合同](docs/REPRODUCTION.md)。
+**环境保留 SDAR 默认：1000商品的小环境、synthetic goals。** 不是全量商品环境，也不是 canonical human500 测试集。本仓库使用 [固定140项清单](configs/fixed_validation140.json) 和 [按内容划分的训练/验证任务](configs/task_split.json)：五个原生商品大类各28项、140个不同目标商品；所有训练worker都排除这140个目标及其随机价格变体。两个尺寸、所有checkpoint、续跑和独立评测共用字节一致的清单。除任务划分和验证数量外，GRPO、loss、prompt、动作解析、奖励及训练采样量不变。详细边界见 [复现合同](docs/REPRODUCTION.md)。
 
 两种尺寸只改变 backbone/对应模型权重与入口标识，其余公共配置相同。四卡下全局 mini64→每rank16，micro8→2次原生梯度累积；不增加全局采样量，也不承诺八卡/四卡逐位数值相同。
 
 ## 1. 干净服务器安装
 
-需要 Linux x86-64、Python **3.10**、OpenJDK **11**、兼容 CUDA12.8 的驱动和四张已获配 A100 80GB。默认32个可用逻辑CPU；原生256个环境actor会各自加载商品、NLP及Java搜索，建议主机内存256–512GiB，优先512GiB。建议至少250GiB空闲盘，必须容纳旧两份断点加第三份新写入的峰值。此为容量预算，不是实测最低值。
+需要 Linux x86-64、Python **3.10**、OpenJDK **11**、兼容 CUDA12.8 的驱动和四张已获配 A100 80GB。默认32个可用逻辑CPU；128个训练＋140个验证环境actor会各自加载商品、NLP及Java搜索，建议主机内存256–512GiB，优先512GiB。建议至少250GiB空闲盘，必须容纳旧两份断点加第三份新写入的峰值。此为容量预算，不是实测最低值。
 
 以下示例使用公开 Conda；可用等价的 micromamba。环境和资产都由公开来源准备，无维护者本机文件或私人服务器依赖。
 
@@ -81,11 +81,13 @@ python src/report.py
 
 ## 3. 验证口径与结果
 
-原版从每个worker已打乱 goals 的前500个索引中抽128个；固定seed只决定整个抽题序列，不会使每轮抽到同一组。本版将seed1000的**第一次抽题**预先写入固定清单，绑定worker编号、worker seed和目标索引。每次只在验证reset期间复现这一抽样并核对清单，之后恢复该验证环境原有私有RNG；不操作训练环境或全局模型RNG。
+每轮完整测140个任务，每个任务一次自由rollout，不再从候选池随机抽128个。五类 beauty/electronics/fashion/garden/grocery 各28项；选取时覆盖不同属性数、选项数、搜索目标和商品细类，使用固定哈希打破平局，不参考任何模型成绩。清单包含140个不同目标商品、123种搜索目标、126个商品细类，选项数0/1/2/3分别55/49/29/7项。
 
-同一组任务在update0、5、10直到150重复评测；1.5B和3B使用字节一致的清单。首次记录 `fixed_validation_identity.json`；以后含续跑均核对初始任务观察的SHA，不一致立即报错，不悄悄换题。每次summary记录清单SHA、`selection_sha256`及初始观察SHA，跨仓库比较时应三者一致。
+任务身份由指令、属性和选项计算，不使用各worker局部编号。原生随机价格上限不参与身份匹配，防止同一目标只换个价格就进入训练；相同可见要求的商品别名一并排除。原始6910条目标中排除145条对应记录，训练保留其余6765条的原顺序、权重与均匀无放回组采样方式，不做训练全库去重，也不排除整个商品目录。环境构造、显式reset和终局自动reset均检查隔离，发现数据漂移或泄漏立即报错。
 
-训练仍从索引500起随机采样。不同worker的goals有各自seed，因此**固定验证任务不等于已证明与训练任务全局语义隔离**，不能宣称是canonical human500/严格zero-shot评测。验证仍为每任务一次完整自由rollout，最多15步、history2、response512，温度0.4；没有改成贪心，所以**固定题目不保证每次模型输出或分数完全相同**。
+同一组任务在update0、5、10直到150重复评测；1.5B和3B使用字节一致的两份清单。每项固定worker seed、任务内容ID和reset编号，加载后核对实际任务ID；首次记录 `fixed_validation_identity.json`，此后含续跑均核对初始任务观察的SHA，不一致立即报错。每次summary记录划分/验证清单SHA、`selection_sha256`及初始观察SHA，跨仓库比较时应一致。
+
+训练和验证按上述任务身份互不重叠，但仍共享商品环境和其他相近任务，**不能称为全新商品/领域的zero-shot评测，也不是官方human500划分**。验证最多15步、history2、response512，温度0.4；没有改成贪心，所以**固定题目不保证每次模型输出或分数完全相同**。
 
 - 成功率：原生wrapper仅当终局WebShop原始score恰为1时给reward10、won=true；其余reward0。
 - 连续score：另保留原生 `task_score` 的0–1值和0–100显示值；不把部分匹配当成功。
@@ -94,7 +96,7 @@ python src/report.py
 输出在 `runs/grpo_1.5b/`：`metrics.jsonl`、`evaluation/update_000`及其后每5步的summary/逐决策token文本和ID、原生验证日志、20步断点、最终150步和HF导出。初始base成绩来自update0，不预填成绩、不从测试曲线挑最优checkpoint冒充最终结果。
 
 ```bash
-# 独立评测导出模型：使用同一固定128条任务，使用新输出目录。
+# 独立评测导出模型：使用同一固定140条任务，使用新输出目录。
 bash scripts/eval.sh --model "$PWD/runs/grpo_1.5b/hf150" \
   --run-dir "$PWD/runs/grpo_1.5b_final_eval"
 python src/report.py
@@ -106,6 +108,6 @@ python src/report.py
 
 原生optimizer、scheduler/RNG及dataloader保留；原版不快照WebShop/Ray环境内部随机状态，所以续跑不承诺与未中断采样逐位相同。四rank断点不能直接用八rank续跑或反过来。
 
-固定验证清单及实现也纳入续跑绑定；旧随机验证版的run不能静默迁到本版继续。保留旧run和其原代码；新实验使用新run目录。验证固定并不意味着训练环境的续跑采样被改为固定。
+固定验证/任务划分清单及实现纳入续跑绑定；旧随机验证/固定128版的run不能静默迁到本版继续。保留旧run和其原代码，新实验使用新run目录。训练仍在隔离后的训练池随机采样。
 
 GitHub Actions在干净Linux/Python3.10/Java11中公开获取上游和数据，检查源码/配方/隐私、原生GRPO实际CPU梯度、存盘故障与CPU恢复、真实WebShop搜索/购买/奖励、入口配置。**这不是四卡GPU/vLLM/NCCL或完整150步训练验证**；没有捏造成绩。完整来源与许可见 [THIRD_PARTY.md](THIRD_PARTY.md)。

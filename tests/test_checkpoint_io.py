@@ -442,4 +442,5 @@ def test_storage_adapter_retains_original_native_algorithm():
     for name in ('verl/trainer/ppo/core_algos.py', 'verl/workers/actor/dp_actor.py',
                  'verl/workers/fsdp_workers.py', 'verl/trainer/ppo/ray_trainer.py'):
         assert name in lock['unchanged_files']
-    assert set(lock['patched_files']) == {'verl/trainer/main_ppo.py'}
+    assert set(lock['patched_files']) == {'verl/trainer/main_ppo.py',
+        'agent_system/environments/env_package/webshop/envs.py'}

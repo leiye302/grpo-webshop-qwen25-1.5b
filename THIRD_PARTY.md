@@ -5,12 +5,15 @@
   Use the pure-GRPO baseline `examples/grpo_trainer/run_webshop_8gpu.sh`,
   not the SDAR self-distillation trainer. Framework and new wrapper: Apache-2.0.
   Upstream notices remain in the downloaded checkout.
-  Only the Trainer import alias in `verl/trainer/main_ppo.py` is patched.
-  The subclass calls the unchanged training/validation loop, adding read-only
-  telemetry, evaluation-only fixed128 task selection, and transactional
-  storage around native serialization/loading. The fixed manifest is the
-  original seed1000 first draw and is reused across checkpoints/model sizes.
-  No native WebShop environment, parser, prompt, search or reward changes.
+  Two native files are patched: the Trainer import alias in
+  `verl/trainer/main_ppo.py`, and the WebShop vector worker factory/index range
+  in `agent_system/environments/env_package/webshop/envs.py`. The latter uses
+  a subclass to exclude the fixed140 validation objectives from every training
+  worker by content identity, rather than independently shuffled local indices.
+  Training/validation loops, parser, prompt, search, goal generator and reward
+  are unchanged. Wrapper code adds fixed140 selection, read-only telemetry,
+  disjoint-pool assertions and transactional checkpoint serialization/loading.
+  The same balanced140 task manifest is reused across checkpoints/model sizes.
 - **WebShop**: https://github.com/princeton-nlp/WebShop .
   The embedded source retains its MIT license at
   `.deps/sdar/agent_system/environments/env_package/webshop/webshop/LICENSE.md`.

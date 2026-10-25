@@ -1,7 +1,46 @@
+diff --git a/agent_system/environments/env_package/webshop/envs.py b/agent_system/environments/env_package/webshop/envs.py
+index 9d320bc..a241a8d 100644
+--- a/agent_system/environments/env_package/webshop/envs.py
++++ b/agent_system/environments/env_package/webshop/envs.py
+@@ -117,10 +117,11 @@ class WebshopMultiProcessEnv(gym.Env):
+         self._env_kwargs = env_kwargs if env_kwargs is not None else {'observation_mode': 'text', 'num_products': None}
+ 
+         # -------------------------- Ray actors setup --------------------------
+-        env_worker = ray.remote(**resources_per_worker)(WebshopWorker)
++        from webshop_worker import DisjointWebshopWorker
++        env_worker = ray.remote(**resources_per_worker)(DisjointWebshopWorker)
+         self._workers = []
+         for i in range(self.num_processes):
+-            worker = env_worker.remote(seed + (i // self.group_n), self._env_kwargs)
++            worker = env_worker.remote(seed + (i // self.group_n), self._env_kwargs, is_train)
+             self._workers.append(worker)
+ 
+         # Get goals from the first worker
+@@ -138,10 +139,8 @@ class WebshopMultiProcessEnv(gym.Env):
+         # else:
+         #     self.goal_idxs = range(len(self.env.server.goals))
+ 
+-        if not self.is_train:
+-            self.goal_idxs = range(500)
+-        else:
+-            self.goal_idxs = range(500, len(goals))
++        # The worker's actual goal catalog is already filtered by global task identity.
++        self.goal_idxs = range(len(goals))
+ 
+         print(self.goal_idxs)
+ 
+@@ -254,4 +253,4 @@ def build_webshop_envs(
+         resources_per_worker=resources_per_worker,
+         is_train=is_train,
+         env_kwargs=env_kwargs,
+-    )
+\ No newline at end of file
++    )
 diff --git a/verl/trainer/main_ppo.py b/verl/trainer/main_ppo.py
+index ea5ca4d..aeed8a7 100644
 --- a/verl/trainer/main_ppo.py
 +++ b/verl/trainer/main_ppo.py
-@@ -23,6 +23,6 @@ import hydra
+@@ -21,6 +21,6 @@ import hydra
  import ray
  from omegaconf import OmegaConf
  

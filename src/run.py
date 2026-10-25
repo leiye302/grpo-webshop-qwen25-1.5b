@@ -87,7 +87,7 @@ def verify_model(model, size, evaluate):
 
 def data(run_dir):
     import pandas as pd
-    for split, count in [('train', 16), ('val', 128)]:
+    for split, count in [('train', 16), ('val', 140)]:
         records = [{'data_source': 'text', 'prompt': [{'role': 'user', 'content': ''}],
                     'ability': 'agent', 'extra_info': {'split': split, 'index': i}}
                    for i in range(count)]
@@ -126,7 +126,8 @@ def launch(args):
         'recipe_sha256': sha(ROOT / 'configs/experiment.json'),
         'upstream_lock_sha256': sha(ROOT / 'configs/upstream.json'),
         'asset_lock_sha256': sha(ROOT / 'configs/assets.json'),
-        'validation_manifest_sha256': sha(ROOT / 'configs/fixed_validation128.json'),
+        'validation_manifest_sha256': sha(ROOT / 'configs/fixed_validation140.json'),
+        'task_split_sha256': sha(ROOT / 'configs/task_split.json'),
         'asset_receipt': asset_receipt, 'world_size': WORLD_SIZE, 'command': args.command,
         'release_code_sha256': {p.name: sha(p) for p in sorted((ROOT / 'src').glob('*.py'))}}
     if args.resume:
@@ -181,7 +182,7 @@ def main():
     parser.add_argument('--dry-run', action='store_true', help='Print config; no CUDA, model or data access')
     args = parser.parse_args()
     if args.cpus < 32:
-        parser.error('Allocate at least 32 logical CPUs for the unchanged 256-actor native environment')
+        parser.error('Allocate at least 32 logical CPUs for 128 training and140 validation actors')
     if args.model and args.command != 'eval':
         parser.error('--model is evaluation only; training uses the pinned base model')
     if args.resume and args.command != 'train':

@@ -2,13 +2,13 @@
   "repository": "https://github.com/ZJU-REAL/SDAR.git",
   "commit": "29dcb12a55d8fc17ba6ae03fd0a69048f43051f3",
   "native_launcher": "examples/grpo_trainer/run_webshop_8gpu.sh",
-  "validation_manifest_sha256": "da8c9f4a6ded41ba72aa3ea288e8f3620fca28bc01f8c0dc8598de4f6738c53e",
-  "patch_sha256": "85ffd8fd2d35558aab72705d14fc739058c166a560e5ad79d4107495d373d8d4",
+  "task_split_sha256": "6055ef05de812132425060ad959d11bd6ca1cbe40a94f9a195f9f0647ae9547c",
+  "validation_manifest_sha256": "706adb889929acc45bafd52fc144cd160b85ee7f752adf7b6dad8699f8c5ce4a",
+  "patch_sha256": "e455989e640433addbb09b45a382a37729965888eb8e3e4a409df3be90292633",
   "assets_lock_sha256": "f8313d36b83df707e2f44b85fd2a07aa765ad82e3ee9cc9f26620e92e34cc81a",
   "unchanged_files": {
     "agent_system/environments/env_manager.py": "6294aef97cf12775222b8c189273f990065ecca13d1308650311ebe0ab1c64f5",
     "agent_system/environments/env_package/webshop/__init__.py": "5ade0a7accede023f5ace95107c108d43e35c31b0897c4040243bd3794220265",
-    "agent_system/environments/env_package/webshop/envs.py": "370962cf9abc5c0796ca3a9f228811ee109aadbb1c12d9d044fc3ac4318d7e33",
     "agent_system/environments/env_package/webshop/projection.py": "0808d4643459acf2a4c496eab3fc8735025c440f28cc517066355a1f5fbc048f",
     "agent_system/environments/env_package/webshop/webshop/conftest.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "agent_system/environments/env_package/webshop/webshop/run_web_agent_text_env.py": "1745b135e64f79cd9acb9c830852b12fccb96d4b4365c9a8233c5335394aa4dd",
@@ -43,6 +43,7 @@
     "verl/workers/fsdp_workers.py": "7d70d685bbad4711ebd17595698cbc9a8bc379c5da20b12203fadf51f063b2cc"
   },
   "patched_files": {
-    "verl/trainer/main_ppo.py": "9950c9298bcc1375d51a0bdd2ebdb08346d796e5b3af697a798f94d85def7aac"
+    "verl/trainer/main_ppo.py": "9950c9298bcc1375d51a0bdd2ebdb08346d796e5b3af697a798f94d85def7aac",
+    "agent_system/environments/env_package/webshop/envs.py": "78a9a4822125c76804dab40c84d30e9f3fe9f50087f513491085aa5a4b31bef7"
   }
 }

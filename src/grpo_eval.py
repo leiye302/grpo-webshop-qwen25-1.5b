@@ -35,9 +35,12 @@ class WebShopTrainer(NativeCheckpointMixin, RayPPOTrainer):
         records, selections, identities = [], [], []
 
         def reset():
+            fixed = manifest()
+            if identities:
+                raise RuntimeError('Expected exactly one140-task validation reset')
             result, identity = reset_fixed_validation(native_env, original_reset, self.config.env.seed + 1000)
             record_identity(os.environ['GRPO_RUN_DIR'], identity)
-            selections.append(manifest()['selection'])
+            selections.extend(fixed['selection'])
             identities.append(identity)
             return result
 
@@ -67,13 +70,13 @@ class WebShopTrainer(NativeCheckpointMixin, RayPPOTrainer):
             previous = episodes.setdefault(row['trajectory_id'], row['episode_reward'])
             if previous != row['episode_reward']:
                 raise RuntimeError('Inconsistent native trajectory reward')
-        expected = int(self.config.data.val_batch_size)
-        if len(episodes) != expected or len(selections) != 1 or len(selections[0]) != expected:
-            raise RuntimeError('Expected one native WebShop validation batch')
+        expected = manifest()['count']
+        if len(episodes) != expected or len(selections) != expected or len(identities) != 1:
+            raise RuntimeError('Expected all140 WebShop validation trajectories')
         successes = sum(reward > 0 for reward in episodes.values())
         if abs(metrics['val/success_rate'] - successes / expected) > 1e-6:
             raise RuntimeError('Episode success differs from native WebShop metric')
-        schedule = selections[0]
+        schedule = selections
         identity = identities[0]
         score_key = 'val/webshop_task_score (not success_rate)'
         summary = {'update': int(self.global_steps), 'episodes': expected,
@@ -85,7 +88,7 @@ class WebShopTrainer(NativeCheckpointMixin, RayPPOTrainer):
             'reasoning_open_rate': sum(r['protocol']['reasoning_open'] for r in records) / len(records),
             'strict_protocol_rate': sum(r['protocol']['strict_protocol'] for r in records) / len(records),
             'native_action_valid_rate': sum(r['action_valid'] for r in records) / len(records),
-            'task_id_note': 'Native per-worker shuffled goal indices, not globally canonical human test IDs'}
+            'task_id_note': 'Fixed140 synthetic objectives; content IDs excluded from every training worker; not canonical human500'}
         out = Path(os.environ['GRPO_RUN_DIR']) / 'evaluation' / f'update_{self.global_steps:03d}'
         atomic_json(out / 'summary.json', summary)
         atomic_json(out / 'decisions.json', records)

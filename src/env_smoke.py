@@ -7,6 +7,7 @@ from common import ROOT, UPSTREAM, WEBSHOP, atomic_json
 from assets import verify
 from setup import verify as verify_source
 from fixed_validation import manifest, digest
+from task_split import make_manifest, manifest as split_manifest
 
 
 def main():
@@ -18,15 +19,36 @@ def main():
     receipt = verify()
     sys.path[:0] = [str(UPSTREAM), str(WEBSHOP)]
     from agent_system.environments.env_package.webshop.envs import WebshopWorker
+    from webshop_worker import DisjointWebshopWorker
+    kwargs = {'observation_mode': 'text', 'num_products': None, 'human_goals': False,
+        'file_path': str(WEBSHOP / 'data/items_shuffle_1000.json'),
+        'attr_path': str(WEBSHOP / 'data/items_ins_v2_1000.json')}
+    # Rebuild the published split with the real, unmodified native goal generator.
+    canonical = WebshopWorker(1000, dict(kwargs))
+    try:
+        if make_manifest(canonical.env.unwrapped.server.goals) != split_manifest():
+            raise RuntimeError('Public140-task split does not reproduce from the native catalog')
+    finally:
+        canonical.close()
     records = []
     fixed = manifest()['selection']
-    cases = [(0, 0)] + [(r['worker_seed'], r['goal_index']) for r in (fixed[0], fixed[-1])]
-    for seed, goal_index in cases:
-        worker = WebshopWorker(seed, {'observation_mode': 'text', 'num_products': None, 'human_goals': False,
-            'file_path': str(WEBSHOP / 'data/items_shuffle_1000.json'),
-            'attr_path': str(WEBSHOP / 'data/items_ins_v2_1000.json')})
+    cases = [(0, True, 0), (15, True, 1)] + [
+        (r['worker_seed'], False, r['goal_index']) for r in (fixed[0], fixed[-1])]
+    for seed, is_train, goal_index in cases:
+        worker = DisjointWebshopWorker(seed, kwargs, is_train)
         try:
-            initial, _ = worker.reset(goal_index)
+            audit = worker.get_split_audit()
+            if audit['opposite_split_overlap']:
+                raise RuntimeError('Training and validation task pools overlap')
+            initial, initial_info = worker.reset(goal_index)
+            if not is_train and initial_info['task_id'] != fixed[goal_index]['task_id']:
+                raise RuntimeError('Actual held-out goal differs from the public140 manifest')
+            if is_train:
+                # Training retains all other native entries, rather than a deduplicated pool.
+                if audit['goal_entries'] != split_manifest()['training_goal_entries']:
+                    raise RuntimeError('Wrong filtered training pool size')
+                records.append(dict(audit, reset_task_id=initial_info['task_id']))
+                continue
             env = worker.env.unwrapped
             goal = env.server.user_sessions[env.session]['goal']
             product = env.server.product_item_dict[goal['asin']]
@@ -53,12 +75,14 @@ def main():
             if repeated != initial:
                 raise RuntimeError('Native fixed-goal reset changed the initial task after purchase')
             records.append({'seed': seed, 'goal_index': goal_index, 'goal_count': len(env.server.goals),
+                            'task_id': initial_info['task_id'], 'split_audit': audit,
                             'repeat_reset_identical': True, 'initial_observation_sha256': digest(initial),
                             'actions': actions, 'native_reward': reward, 'task_score': info['task_score']})
         finally:
             worker.close()
     atomic_json(args.out, {'status': 'passed', 'cpu_environment_only': True,
-        'not_actor_or_benchmark_performance': True, 'corpus_sha256': receipt['corpus_sha256'], 'cases': records})
+        'not_actor_or_benchmark_performance': True, 'corpus_sha256': receipt['corpus_sha256'],
+        'fixed140_manifest_rebuilt_from_native': True, 'diversity': split_manifest()['diversity'], 'cases': records})
     print('Passed real native WebShop CPU environment smoke; not model evaluation.')
 
 
