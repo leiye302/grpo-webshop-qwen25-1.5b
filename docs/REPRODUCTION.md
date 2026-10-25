@@ -53,6 +53,7 @@ source hashes and the tiny complete patch are enforced before launch.
 
 Other portable changes: public pinned model/assets download, index build,
 Python3.10/Java11 and compatible package constraints, project-relative paths,
+including spaCy3.7.2's compatible preshed/cymem/murmurhash/srsly binary stack,
 four-GPU Ray resource binding, console logger, explicit150-update stop and
 local completion/export receipts. Do not inherit private proxies, conda paths
 or destructive whole-machine cleanup commands from the original shell script.

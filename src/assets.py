@@ -13,7 +13,8 @@ from common import ROOT, WEBSHOP, atomic_json, load, sha
 
 
 PACKAGES = {'numpy': '1.26.4', 'spacy': '3.7.2', 'pyserini': '0.17.0',
-            'faiss-cpu': '1.7.4', 'en-core-web-sm': '3.7.1'}
+            'faiss-cpu': '1.7.4', 'en-core-web-sm': '3.7.1', 'cymem': '2.0.8',
+            'preshed': '3.0.9', 'murmurhash': '1.0.10', 'srsly': '2.4.8'}
 
 
 def download_file(destination, urls, expected):
