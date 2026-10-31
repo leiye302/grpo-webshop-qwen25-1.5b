@@ -1,5 +1,8 @@
 # WebShop GRPO — Qwen2.5-1.5B, 4×A100 80GB
 
+> Shared cross-method evaluation: [exact common140 tasks and unchanged sampling](docs/SHARED_EVALUATION140.md).
+
+
 独立的 **Qwen2.5-1.5B-Instruct 纯 GRPO** 复现仓库，直接使用 [SDAR 公开代码](https://github.com/ZJU-REAL/SDAR) 的 WebShop GRPO baseline。无 SFT、OPSD、Teacher、skill、RETHINK、Analyzer 或付费 API。另一个模型尺寸独立发布，不在本仓库顺序训练。
 
 ## 固定配方

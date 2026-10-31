@@ -11,7 +11,7 @@
   "actor_rollout_ref.model.use_remove_padding": true,
   "actor_rollout_ref.model.enable_gradient_checkpointing": true,
   "actor_rollout_ref.model.use_fused_kernels": false,
-  "actor_rollout_ref.actor.optim.lr": 0.000001,
+  "actor_rollout_ref.actor.optim.lr": 1e-06,
   "actor_rollout_ref.actor.ppo_mini_batch_size": 64,
   "actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu": 8,
   "actor_rollout_ref.actor.use_kl_loss": true,
@@ -46,7 +46,9 @@
   "env.webshop.use_small": true,
   "env.webshop.human_goals": false,
   "trainer.critic_warmup": 0,
-  "trainer.logger": ["console"],
+  "trainer.logger": [
+    "console"
+  ],
   "trainer.project_name": "grpo_webshop",
   "trainer.n_gpus_per_node": 4,
   "trainer.nnodes": 1,
@@ -58,5 +60,7 @@
   "trainer.max_actor_ckpt_to_keep": 2,
   "trainer.max_critic_ckpt_to_keep": 2,
   "trainer.del_local_ckpt_after_load": false,
-  "trainer.ray_wait_register_center_timeout": 600
+  "trainer.ray_wait_register_center_timeout": 600,
+  "actor_rollout_ref.rollout.val_kwargs.top_p": 1.0,
+  "actor_rollout_ref.rollout.val_kwargs.top_k": -1
 }
